@@ -1,34 +1,13 @@
-import re
-from urllib.parse import urlparse
-
 from django import forms
 from django.contrib.auth import authenticate
 from django.contrib.auth.forms import PasswordChangeForm
 
+from team_finder.utils import normalize_phone, validate_github_url, validate_phone_format
+
 from .models import User
 
 
-PHONE_RE = re.compile(r"^(?:8|\+7)\d{10}$")
-
-
-def normalize_phone(value):
-    if value is None:
-        return ""
-
-    phone = value.strip()
-    if phone.startswith("8") and len(phone) == 11:
-        phone = "+7" + phone[1:]
-    return phone
-
-
-def validate_github_url(value):
-    if not value:
-        return
-
-    parsed_url = urlparse(value)
-    host = parsed_url.netloc.lower()
-    if host not in {"github.com", "www.github.com"}:
-        raise forms.ValidationError("Ссылка должна вести на github.com")
+ABOUT_TEXTAREA_ROWS = 4
 
 
 class RegisterForm(forms.ModelForm):
@@ -83,7 +62,7 @@ class ProfileForm(forms.ModelForm):
             "github_url": "GitHub",
         }
         widgets = {
-            "about": forms.Textarea(attrs={"rows": 4}),
+            "about": forms.Textarea(attrs={"rows": ABOUT_TEXTAREA_ROWS}),
         }
 
     def clean_phone(self):
@@ -91,8 +70,7 @@ class ProfileForm(forms.ModelForm):
         if not phone:
             return phone
 
-        if not PHONE_RE.match(phone):
-            raise forms.ValidationError("Телефон должен быть в формате 8XXXXXXXXXX или +7XXXXXXXXXX")
+        validate_phone_format(phone)
 
         users_with_same_phone = User.objects.filter(phone=phone)
         if self.instance.pk:

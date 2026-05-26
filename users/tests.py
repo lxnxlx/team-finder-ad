@@ -9,6 +9,18 @@ from users.models import User
 
 
 TEMP_MEDIA_ROOT = tempfile.mkdtemp()
+TEST_PASSWORD = "pass12345"
+REGISTER_EMAIL = "anna@example.com"
+REGISTER_NAME = "Анна"
+REGISTER_SURNAME = "Петрова"
+FIRST_USER_EMAIL = "first@example.com"
+SECOND_USER_EMAIL = "second@example.com"
+EXISTING_PHONE = "+79990000000"
+VALID_PHONE_INPUT = "89990000001"
+VALID_PHONE_RESULT = "+79990000001"
+DUPLICATE_PHONE_INPUT = "89990000000"
+GITHUB_URL = "https://github.com/example"
+AVATAR_PREFIX = "avatars/avatar_"
 
 
 @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
@@ -23,28 +35,28 @@ class UserFlowTests(TestCase):
             reverse("users:register"),
             {
                 "name": "Анна",
-                "surname": "Петрова",
-                "email": "anna@example.com",
-                "password": "pass12345",
+                "surname": REGISTER_SURNAME,
+                "email": REGISTER_EMAIL,
+                "password": TEST_PASSWORD,
             },
         )
 
         self.assertRedirects(response, reverse("users:login"))
-        user = User.objects.get(email="anna@example.com")
-        self.assertTrue(user.check_password("pass12345"))
-        self.assertTrue(user.avatar.name.startswith("avatars/avatar_"))
+        user = User.objects.get(email=REGISTER_EMAIL)
+        self.assertTrue(user.check_password(TEST_PASSWORD))
+        self.assertTrue(user.avatar.name.startswith(AVATAR_PREFIX))
 
     def test_profile_form_normalizes_phone_and_rejects_duplicate(self):
         existing = User.objects.create_user(
-            email="first@example.com",
-            password="pass12345",
+            email=FIRST_USER_EMAIL,
+            password=TEST_PASSWORD,
             name="Первый",
             surname="Пользователь",
-            phone="+79990000000",
+            phone=EXISTING_PHONE,
         )
         edited = User.objects.create_user(
-            email="second@example.com",
-            password="pass12345",
+            email=SECOND_USER_EMAIL,
+            password=TEST_PASSWORD,
             name="Второй",
             surname="Пользователь",
         )
@@ -54,8 +66,8 @@ class UserFlowTests(TestCase):
                 "name": existing.name,
                 "surname": existing.surname,
                 "about": "",
-                "phone": "89990000001",
-                "github_url": "https://github.com/example",
+                "phone": VALID_PHONE_INPUT,
+                "github_url": GITHUB_URL,
             },
             instance=existing,
         )
@@ -64,12 +76,12 @@ class UserFlowTests(TestCase):
                 "name": edited.name,
                 "surname": edited.surname,
                 "about": "",
-                "phone": "89990000000",
-                "github_url": "https://github.com/example",
+                "phone": DUPLICATE_PHONE_INPUT,
+                "github_url": GITHUB_URL,
             },
             instance=edited,
         )
 
         self.assertTrue(valid_form.is_valid())
-        self.assertEqual(valid_form.cleaned_data["phone"], "+79990000001")
+        self.assertEqual(valid_form.cleaned_data["phone"], VALID_PHONE_RESULT)
         self.assertFalse(duplicate_form.is_valid())

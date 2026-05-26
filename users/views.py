@@ -1,7 +1,10 @@
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
+
+from projects.models import Project
+from team_finder.utils import paginate_items
 
 from .forms import LoginForm, ProfileForm, RegisterForm, TeamFinderPasswordChangeForm
 from .models import User
@@ -35,15 +38,15 @@ def logout_view(request):
 
 
 def user_detail(request, user_id):
-    profile_user = get_object_or_404(User, pk=user_id)
+    user_projects = Project.objects.select_related("owner").prefetch_related("participants")
+    users = User.objects.prefetch_related(Prefetch("owned_projects", queryset=user_projects))
+    profile_user = get_object_or_404(users, pk=user_id)
     return render(request, "users/user-details.html", {"user": profile_user})
 
 
 def participants(request):
-    users = User.objects.order_by("-id")
-    paginator = Paginator(users, 12)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
+    users = User.objects.select_related().order_by("-id")
+    page_obj = paginate_items(request, users)
 
     context = {
         "participants": page_obj.object_list,
