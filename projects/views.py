@@ -1,19 +1,21 @@
-import json
+from http import HTTPStatus
 
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
+
+from team_finder.utils import get_request_data, paginate_items
 
 from .forms import ProjectForm
 from .models import Project, Skill
 
 
+SKILL_SUGGESTIONS_LIMIT = 10
+
+
 def _project_queryset():
-    projects = Project.objects.all()
-    projects = projects.order_by("-created_at")
-    return projects
+    return Project.objects.select_related("owner").prefetch_related("participants", "skills")
 
 
 def project_list(request):
@@ -22,9 +24,7 @@ def project_list(request):
     if active_skill:
         projects = projects.filter(skills__name=active_skill)
 
-    paginator = Paginator(projects, 12)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
+    page_obj = paginate_items(request, projects)
 
     all_skills = Skill.objects.values_list("name", flat=True)
     all_skills = all_skills.order_by("name")
@@ -77,9 +77,13 @@ def edit_project(request, project_id):
 @login_required
 @require_POST
 def complete_project(request, project_id):
-    project = get_object_or_404(Project, pk=project_id)
+    project = Project.objects.filter(pk=project_id).first()
+    if project is None:
+        return JsonResponse({"error": "project not found"}, status=HTTPStatus.NOT_FOUND)
+
     if project.owner_id != request.user.id and not request.user.is_staff:
-        return JsonResponse({"status": "forbidden"}, status=403)
+        return JsonResponse({"status": "forbidden"}, status=HTTPStatus.FORBIDDEN)
+
     if project.status == Project.STATUS_OPEN:
         project.status = Project.STATUS_CLOSED
         project.save(update_fields=["status"])
@@ -89,17 +93,20 @@ def complete_project(request, project_id):
 @login_required
 @require_POST
 def toggle_participate(request, project_id):
-    project = get_object_or_404(Project, pk=project_id)
+    project = Project.objects.filter(pk=project_id).first()
+    if project is None:
+        return JsonResponse({"error": "project not found"}, status=HTTPStatus.NOT_FOUND)
+
     if project.owner_id == request.user.id:
         return JsonResponse({"status": "ok", "participant": True})
 
     is_participant = project.participants.filter(pk=request.user.pk).exists()
     if is_participant:
         project.participants.remove(request.user)
-        participant = False
     else:
         project.participants.add(request.user)
-        participant = True
+    participant = not is_participant
+
     return JsonResponse({"status": "ok", "participant": participant})
 
 
@@ -112,30 +119,22 @@ def skill_suggestions(request):
         skills = skills.filter(name__istartswith=query)
 
     skills = skills.order_by("name")
-    skills = skills.values("id", "name")[:10]
+    skills = skills.values("id", "name")[:SKILL_SUGGESTIONS_LIMIT]
     data = list(skills)
     return JsonResponse(data, safe=False)
-
-
-def _payload(request):
-    if request.content_type == "application/json":
-        try:
-            if request.body:
-                return json.loads(request.body)
-            return {}
-        except json.JSONDecodeError:
-            return {}
-    return request.POST
 
 
 @login_required
 @require_POST
 def add_skill(request, project_id):
-    project = get_object_or_404(Project, pk=project_id)
-    if project.owner_id != request.user.id and not request.user.is_staff:
-        return JsonResponse({"status": "forbidden"}, status=403)
+    project = Project.objects.filter(pk=project_id).first()
+    if project is None:
+        return JsonResponse({"error": "project not found"}, status=HTTPStatus.NOT_FOUND)
 
-    payload = _payload(request)
+    if project.owner_id != request.user.id and not request.user.is_staff:
+        return JsonResponse({"status": "forbidden"}, status=HTTPStatus.FORBIDDEN)
+
+    payload = get_request_data(request)
     skill_id = payload.get("skill_id")
     name = payload.get("name")
     if name:
@@ -145,14 +144,19 @@ def add_skill(request, project_id):
 
     created = False
     if skill_id:
-        skill = get_object_or_404(Skill, pk=skill_id)
+        skill = Skill.objects.filter(pk=skill_id).first()
+        if skill is None:
+            return JsonResponse({"error": "skill not found"}, status=HTTPStatus.NOT_FOUND)
     elif name:
         skill, created = Skill.objects.get_or_create(
             name__iexact=name,
             defaults={"name": name},
         )
     else:
-        return JsonResponse({"error": "skill_id or name is required"}, status=400)
+        return JsonResponse(
+            {"error": "skill_id or name is required"},
+            status=HTTPStatus.BAD_REQUEST,
+        )
 
     already_added = project.skills.filter(pk=skill.pk).exists()
     if not already_added:
@@ -171,9 +175,16 @@ def add_skill(request, project_id):
 @login_required
 @require_POST
 def remove_skill(request, project_id, skill_id):
-    project = get_object_or_404(Project, pk=project_id)
+    project = Project.objects.filter(pk=project_id).first()
+    if project is None:
+        return JsonResponse({"error": "project not found"}, status=HTTPStatus.NOT_FOUND)
+
     if project.owner_id != request.user.id and not request.user.is_staff:
-        return JsonResponse({"status": "forbidden"}, status=403)
-    skill = get_object_or_404(Skill, pk=skill_id)
+        return JsonResponse({"status": "forbidden"}, status=HTTPStatus.FORBIDDEN)
+
+    skill = Skill.objects.filter(pk=skill_id).first()
+    if skill is None:
+        return JsonResponse({"error": "skill not found"}, status=HTTPStatus.NOT_FOUND)
+
     project.skills.remove(skill)
     return JsonResponse({"status": "ok", "removed": True})

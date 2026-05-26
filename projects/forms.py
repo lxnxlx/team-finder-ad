@@ -1,8 +1,11 @@
 from django import forms
 
-from users.forms import validate_github_url
+from team_finder.utils import validate_github_url
 
 from .models import Project
+
+
+PROJECT_DESCRIPTION_ROWS = 6
 
 
 class ProjectForm(forms.ModelForm):
@@ -16,7 +19,7 @@ class ProjectForm(forms.ModelForm):
             "status": "Статус",
         }
         widgets = {
-            "description": forms.Textarea(attrs={"rows": 6}),
+            "description": forms.Textarea(attrs={"rows": PROJECT_DESCRIPTION_ROWS}),
             "status": forms.Select(choices=[
                 (Project.STATUS_OPEN, "Открыт"),
                 (Project.STATUS_CLOSED, "Закрыт"),
