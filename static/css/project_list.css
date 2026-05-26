@@ -234,3 +234,25 @@
     text-decoration: underline;
     color: #666;
 }
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 28px;
+    font-size: 14px;
+}
+
+.pagination a {
+    padding: 8px 14px;
+    border: 1px solid #222;
+    border-radius: 8px;
+    color: #111;
+    text-decoration: none;
+    background: #fff;
+}
+
+.pagination span {
+    color: #555;
+}
